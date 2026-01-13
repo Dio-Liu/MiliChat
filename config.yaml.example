@@ -1,0 +1,131 @@
+# ============================================
+# MiliChat 配置文件模板
+# ============================================
+# 使用说明：
+# 1. 复制此文件并重命名为 config.yaml
+# 2. 填写你的 API Key 和其他配置
+# 3. config.yaml 不会被提交到 Git（已在 .gitignore 中）
+
+# ============================================
+# LLM 配置 (对话模型)
+# ============================================
+llm:
+  # 提供商选择: "deepseek", "openai", "ollama"
+  provider: "deepseek"
+  
+  # API Key
+  api_key: "your_llm_api_key_here"
+  
+  # API Base URL
+  base_url: "https://api.deepseek.com"
+  
+  # 模型名称
+  model_name: "deepseek-chat"
+  
+  # 模型参数
+  temperature: 1.0
+  max_tokens: 2000
+
+# ============================================
+# Vision 配置 (视觉模型，用于屏幕感知)
+# ============================================
+vision:
+  # 是否启用视觉感知功能
+  enabled: true
+  
+  # 提供商选择: "gemini", "openai"
+  provider: "gemini"
+  
+  # API Key
+  api_key: "your_vision_api_key_here"
+  
+  # API Base URL (官方地址)
+  # Gemini 官方: https://generativelanguage.googleapis.com/v1beta/openai/
+  # OpenAI 官方: https://api.openai.com/v1
+  # 中转服务示例（需自行注册）: https://tb.api.mkeai.com/v1
+  base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
+  
+  # 模型名称
+  model_name: "gemini-2.5-flash"
+  
+  # 是否使用语音播报吐槽 (false 则使用气泡显示)
+  use_voice: true
+  
+  # 截图检查间隔（秒）- 聊天结束后的随机等待时间
+  check_interval_min: 120
+  check_interval_max: 240
+
+# ============================================
+# TTS 配置 (语音合成)
+# ============================================
+tts:
+  voice: "zh-CN-XiaoyiNeural"  # Azure TTS 语音名称
+  rate: "+10%"                  # 语速
+  pitch: "+5Hz"                 # 音调
+
+# ============================================
+# Live2D 配置
+# ============================================
+live2d:
+  # 模型路径 (相对于 Resources 文件夹)
+  model_path: "v3/Mao"
+  model_file: "Mao.model3.json"
+  
+  # 表情重置超时时间（秒）
+  expression_reset_timeout: 10.0
+
+# ============================================
+# UI 配置
+# ============================================
+ui:
+  window_width: 300
+  window_height: 450
+  
+  # 待机超时时间（毫秒）
+  idle_timeout_ms: 300000  # 5分钟
+
+# ============================================
+# 模态路由配置 (智能选择文本/视觉流)
+# ============================================
+router:
+  # OCR 识别文字量阈值（超过此值使用文本模型）
+  text_threshold: 30000
+  
+  # 强制触发文本流的关键词
+  keywords: []
+
+# ============================================
+# 系统应用路径配置 (os_control 工具使用) - Windows 示例
+# ============================================
+# 说明: 以下配置是针对 Windows 系统的示例。
+# macOS/Linux 用户请根据实际路径修改应用位置。
+#
+# 参数说明：
+# - {username} 会自动替换为当前用户名
+# - Windows 路径使用 / 或 \\ 都可以
+# - macOS 应用通常在 /Applications/ 或 ~/Applications/
+# - Linux 应用可通过 which 命令查找完整路径
+apps:
+  music: "C:/Program Files/Netease/CloudMusic/cloudmusic.exe"
+  chrome: "C:/Program Files/Google/Chrome/Application/chrome.exe"
+  edge: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+  notepad: "notepad.exe"  # 系统自带程序
+  calculator: "calc.exe"  # 系统自带程序
+  wechat: "C:/Program Files/Tencent/WeChat/WeChat.exe"
+  vscode: "C:/Users/{username}/AppData/Local/Programs/Microsoft VS Code/Code.exe"
+  
+  # 你可以添加更多应用...
+  # spotify: "C:/Users/{username}/AppData/Roaming/Spotify/Spotify.exe"
+
+# ============================================
+# 日志配置
+# ============================================
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # 是否保存到文件
+  save_to_file: true
+  
+  # 日志文件路径
+  log_dir: "logs"

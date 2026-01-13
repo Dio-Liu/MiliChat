@@ -1,0 +1,47 @@
+# ============================================
+# MiliChat 依赖包
+# ============================================
+
+# 核心框架
+PySide6>=6.5.0              # Qt GUI 框架
+PySide6-Addons>=6.5.0       # Qt 附加组件
+PyOpenGL>=3.1.0             # OpenGL 支持
+live2d-py>=0.6.0            # Live2D 模型渲染
+
+# AI / LLM
+openai>=1.0.0               # OpenAI SDK (兼容 DeepSeek 等) - 当前: 2.14.0
+google-generativeai>=0.3.0  # Google Gemini - 当前: 0.8.6
+python-dotenv>=1.0.0        # 环境变量管理 - 当前: 1.2.1
+pyyaml>=6.0                 # YAML 配置文件 - 当前: 6.0.3
+
+# 语音与音频
+edge-tts>=6.1.0             # 微软 Edge TTS - 当前: 7.2.7
+sounddevice>=0.4.6          # 音频输入/输出 - 当前: 0.5.3
+soundfile>=0.12.0           # 音频文件处理 - 当前: 0.13.1
+numpy>=1.24.0               # 数值计算 (音频处理需要) - 当前: 1.26.4
+
+# OCR 与视觉
+rapidocr-onnxruntime>=1.3.0 # OCR 文字识别 - 当前: 1.4.4
+pillow>=10.0.0              # 图像处理 - 当前: 11.3.0
+
+# 记忆与向量
+sentence-transformers>=2.2.0  # 文本嵌入模型 - 当前: 5.1.2
+
+# 系统控制
+screen-brightness-control>=0.20.0  # 屏幕亮度控制 - 当前: 0.25.0
+pycaw>=20240210.0; platform_system=="Windows"  # Windows 音量控制 - 当前: 20251023
+pywin32>=306; platform_system=="Windows"       # Windows API - 当前: 311
+
+# 语音识别 (SenseVoice via Sherpa-ONNX)
+sherpa-onnx>=1.12.0         # Sherpa-ONNX 语音识别引擎 - 当前: 1.12.20
+# onnxruntime>=1.19.0 已在上面列出
+
+# 数据库
+# SQLite 是 Python 内置的，无需额外安装
+
+# 工具库
+requests>=2.31.0            # HTTP 请求 - 当前: 2.32.5
+urllib3>=2.0.0              # URL 处理 - 当前: 2.6.2
+
+# 开发工具 (可选)
+# loguru>=0.7.0             # 更好的日志系统 (可选，如需添加请取消注释)
