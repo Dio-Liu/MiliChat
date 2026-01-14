@@ -168,7 +168,7 @@ class DeepSeekAgent:
         # 使用 search 获取最近的记忆
         try:
             # 用空查询获取一些记忆，或者用固定关键词
-            all_memories = self.mem.search("用户", top_k=5)
+            all_memories = self.mem.search("用户", top_k=8)
             if not all_memories:
                 return "（暂无记忆）"
             
@@ -548,7 +548,7 @@ class DeepSeekAgent:
         mem_str = "（暂无相关记忆）"
         if self.mem:
             print(f"🔍 正在记忆库中检索: {user_text}")
-            retrieved = self.mem.search(user_text, top_k=5)
+            retrieved = self.mem.search(user_text, top_k=8)
             if retrieved:
                 mem_str = "\n".join([f"- {r['text']}" for r in retrieved])
                 print(f"📚 检索到 {len(retrieved)} 条相关记忆:")

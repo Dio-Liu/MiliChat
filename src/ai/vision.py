@@ -15,6 +15,7 @@ from src.core.config import (
     VISION_CHECK_INTERVAL_MIN,
     VISION_CHECK_INTERVAL_MAX,
     VISION_SYSTEM_PROMPTS,  # ✅ 改成列表
+    VISION_SYSTEM_PROMPT_ABSTRACT,  # ★★★ 新增：用于识别抽象模式
     VISION_MODEL_NAME
 )
 
@@ -133,11 +134,9 @@ class VisionSensor:
         智能分析屏幕内容（路由决策）
         
         流程：
-        1. 截图
-        2. 路由决策（OCR + 判断）
-        3. 根据决策选择：
-           - TEXT 流：调用 DeepSeek 文本吐槽
-           - VISION 流：调用 Gemini 视觉分析
+        0. 随机选择 prompt 类型（毒舌/温柔/抽象）
+        1. 如果是抽象模式 → 跳过截图，直接生成抽象内容
+        2. 否则 → 截图 → 路由决策 → 选择 TEXT/VISION 流
         
         Args:
             history: 对话历史列表 [(role, content), ...]
@@ -150,6 +149,17 @@ class VisionSensor:
         if not self.client:
             return None, None
         
+        # Step 0: 随机选择 prompt
+        selected_prompt = random.choice(VISION_SYSTEM_PROMPTS)
+        
+        # ★★★ 判断是否为抽象模式 ★★★
+        if selected_prompt == VISION_SYSTEM_PROMPT_ABSTRACT:
+            print(f"🎪 [Vision] 触发抽象模式！跳过截图，准备整活...")
+            # 抽象模式：不需要截图，直接生成内容
+            response = self._analyze_abstract(selected_prompt, long_term_memory)
+            return response, "Abstract"
+        
+        # 普通模式：需要截图
         # Step 1: 截图
         screenshot = self.capture_screen()
         if not screenshot:
@@ -178,9 +188,60 @@ class VisionSensor:
             response = self._analyze_text(content)
             return response, "DeepSeek"
         else:
-            # 视觉流：使用 Gemini 视觉分析
-            response = self._analyze_vision(screenshot, history, long_term_memory)
+            # 视觉流：使用 Gemini 视觉分析（传入已选择的 prompt）
+            response = self._analyze_vision(screenshot, history, long_term_memory, selected_prompt)
             return response, "Gemini"
+    
+    def _analyze_abstract(self, prompt: str, long_term_memory: str = "") -> str:
+        """
+        抽象流：不基于视觉内容，纯粹让 AI 整活
+        
+        Args:
+            prompt: 抽象模式的 system prompt
+            long_term_memory: 长期记忆（虽然抽象模式不需要，但保留参数以保持接口一致）
+        
+        Returns:
+            str: 抽象整活内容（包含 ###JSON### 格式）
+        """
+        try:
+            print(f"🎪 [Vision] 执行抽象流 (纯粹整活)...")
+            
+            # 构建消息（注意：不需要记忆，不需要历史，不需要图片）
+            messages = [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "开始你的表演吧！"}
+            ]
+            
+            # 调用 API
+            response = self.client.chat.completions.create(
+                model=VISION_MODEL_NAME,
+                messages=messages,
+                temperature=1.2,  # 高温度，让输出更随机
+                top_p=0.95,
+                max_tokens=500   # ★ 增加到 500，确保完整的 JSON 和 1-2 句话能完整返回
+            )
+            
+            raw_content = response.choices[0].message.content.strip()
+            finish_reason = response.choices[0].finish_reason
+            
+            # ★ 检查是否被截断
+            if finish_reason == "length":
+                print(f"⚠️ [Vision] 抽象内容被截断！finish_reason=length")
+                print(f"   截断内容: {raw_content}")
+            
+            # 清洗可能的 markdown 代码块
+            if raw_content.startswith("```"):
+                raw_content = raw_content.replace("```json", "").replace("```", "").strip()
+            
+            print(f"🎪 [Vision] 抽象整活: {raw_content}")
+            
+            return raw_content
+            
+        except Exception as e:
+            print(f"❌ [Vision] 抽象整活失败: {e}")
+            traceback.print_exc()
+            # 返回一个默认的整活
+            return '###JSON###{"expression": "happy", "motion": "perform", "should_trigger": true}\n突然想吟诗一首：代码千行终有 bug，调试万次总见光～'
     
     def _analyze_text(self, ocr_text: str) -> str:
         """
@@ -205,7 +266,7 @@ class VisionSensor:
             traceback.print_exc()
             return None
     
-    def _analyze_vision(self, screenshot, history=None, long_term_memory=""):
+    def _analyze_vision(self, screenshot, history=None, long_term_memory="", selected_prompt=None):
         """
         视觉流：使用 Gemini 视觉分析（原有逻辑）
         
@@ -213,18 +274,7 @@ class VisionSensor:
             screenshot: PIL Image 对象
             history: 对话历史
             long_term_memory: 长期记忆
-        
-        Returns:
-            str: Gemini 的回复文本
-        """
-    def _analyze_vision(self, screenshot, history=None, long_term_memory=""):
-        """
-        视觉流：使用 Gemini 视觉分析（原有逻辑）
-        
-        Args:
-            screenshot: PIL Image 对象
-            history: 对话历史
-            long_term_memory: 长期记忆
+            selected_prompt: 已选择的 prompt（如果为 None，则随机选择）
         
         Returns:
             str: Gemini 的回复文本
@@ -238,8 +288,9 @@ class VisionSensor:
             # 构建消息列表
             messages = []
             
-            # 1. System Prompt (注入记忆 + 随机选择风格)
-            selected_prompt = random.choice(VISION_SYSTEM_PROMPTS)
+            # 1. System Prompt (注入记忆 + 使用传入的 prompt 或随机选择)
+            if selected_prompt is None:
+                selected_prompt = random.choice(VISION_SYSTEM_PROMPTS)
             system_prompt = selected_prompt.replace("{long_term_memory}", long_term_memory)
             
             # ★★★ 新增：注入视觉历史记录到 prompt 中 ★★★
