@@ -106,6 +106,7 @@ class DeepSeekAgent:
         # === 新增：记忆缓冲区 - 周期性反思机制 ===
         self.dialogue_buffer: List[Dict[str, str]] = []  # 暂存对话
         self.reflection_threshold = REFLECTION_THRESHOLD  # 从 config 读取
+        self.reflection_thread = None  # 追踪反思线程，用于 close() 时等待
         print(f"🧠 [Agent] 记忆反思机制已启用 (阈值: {self.reflection_threshold} 轮对话)")
 
     
@@ -525,9 +526,16 @@ class DeepSeekAgent:
         # ★★★ 关键：将 Gemini 的回复存入 DeepSeek 的历史记录 ★★★
         # 这样下次文字对话时，DeepSeek 知道刚才 Gemini 说了什么
         if full_clean_content:
+            # 1. 存入短期上下文 (原代码)
             self.history.append(("user", "[系统事件: 屏幕截图已分析]"))
             self.history.append(("assistant", full_clean_content))
-            print(f"✅ [Agent] 视觉交互已存入上下文历史 ({len(full_clean_content)} 字符)")
+            
+            # 2. ★新增：存入反思缓冲区 (让反思机制感知到这次视觉事件)
+            # 我们构造一个伪造的 User 输入，说明这是视觉模块看到的
+            vision_context = "[系统事件] 视觉模块检测到用户屏幕内容，并触发了主动回复。"
+            self._add_to_buffer(vision_context, full_clean_content)
+            
+            print(f"✅ [Agent] 视觉交互已存入上下文及反思缓冲区")
         else:
             print(f"⚠️ [Agent] 没有提取到正文内容")
 
@@ -910,8 +918,13 @@ class DeepSeekAgent:
             user_text: 用户输入
             ai_reply: AI 回复
         """
-        # 将本轮对话存入缓冲区
-        self.dialogue_buffer.append({"role": "user", "content": user_text})
+        import datetime
+        # 获取当前时间，格式如：Mon 23:30 (星期几 + 时间)
+        # 星期几对判断工作日/周末习惯很重要
+        time_tag = datetime.datetime.now().strftime("%a %H:%M")
+        
+        # ★ 关键修改：在内容前隐式加入时间信息，供后台 LLM 分析
+        self.dialogue_buffer.append({"role": "user", "content": f"[{time_tag}] {user_text}"})
         self.dialogue_buffer.append({"role": "assistant", "content": ai_reply})
         
         # 检查是否触发反思 (阈值检查)
@@ -935,11 +948,12 @@ class DeepSeekAgent:
         
         print(f"🔄 [Reflection] 启动后台反思线程...")
         # 启动后台线程进行分析 (不卡顿界面)
-        threading.Thread(
+        self.reflection_thread = threading.Thread(
             target=self._analyze_buffer, 
             args=(buffer_snapshot,), 
-            daemon=True  # 守护线程，主程序退出时自动结束
-        ).start()
+            daemon=False  # 非守护线程，close() 会等待其完成
+        )
+        self.reflection_thread.start()
     
     def _analyze_buffer(self, chat_history: List[Dict]):
         """
@@ -956,44 +970,13 @@ class DeepSeekAgent:
             for msg in chat_history
         ])
         
-        # 构造反思 Prompt
-        prompt = f"""作为 AI 伴侣的潜意识分析模块，请分析以下对话历史，提炼用户的【核心画像】。
+        # 构造反思 Prompt (简化版，详细指令已在 REFLECTION_SYSTEM_PROMPT 中)
+        prompt = f"""请分析以下对话历史（注意时间戳），提炼用户的核心画像。
 
 对话历史：
 {history_text}
 
-请提取以下三类信息（如果无明显信息则留空数组）：
-
-1. [Facts] 明确的事实更新（如职业变动、居住地、人际关系、姓名等基本信息）
-   - 仅提取确定的事实，不要推测
-   - 格式: {{"key": "name", "value": "张三"}}
-   - ⚠️ 必须使用标准化的 key 名称，从以下列表选择：
-     • name: 姓名
-     • age: 年龄
-     • gender: 性别
-     • occupation: 职业
-     • residence: 居住地
-     • hobby: 爱好（如有多个，用逗号分隔或取最重要的）
-     • relationship: 情感状态（单身/恋爱中/已婚等）
-     • personality: 性格特征（MBTI等）
-     • education: 学历
-     • company: 工作单位
-     • project: 当前项目
-   - ⚠️ 同一个 key 只保留最新的值，会自动覆盖旧值
-
-2. [Psychology] 用户的心理状态、深层需求、潜在喜好或行为模式
-   - 需要从多轮对话中推断，而非单句话
-   - 用自然语言描述，例如："用户在压力大时倾向于反讽"
-
-3. [Summary] 这段对话的主题摘要（一句话概括）
-   - 用于长期情景记忆检索
-
-⚠️ 输出格式必须为严格的 JSON（不要有任何额外文字）:
-{{
-    "facts": [{{"key": "name", "value": "张三"}}, {{"key": "occupation", "value": "产品经理"}}],
-    "psychology": ["用户在压力大时倾向于反讽", "用户对二次元话题表现出高热情"],
-    "summary": "这段对话主要讨论了工作变动，用户情绪由焦虑转为平缓。" 
-}}
+请按照系统指令的格式输出 JSON，包含 facts、psychology、behavior 和 summary 四个字段。
 """
         
         try:
@@ -1012,7 +995,9 @@ class DeepSeekAgent:
             reflection_result = response.choices[0].message.content.strip()
             
             print(f"📝 [Deep Reflection] LLM 返回结果:")
-            print(f"   {reflection_result[:300]}..." if len(reflection_result) > 300 else f"   {reflection_result}")
+            print(f"=" * 70)
+            print(reflection_result)
+            print(f"=" * 70)
             
             # 尝试解析 JSON
             # 有时 LLM 会在 JSON 前后加一些说明文字，我们需要提取纯 JSON 部分
@@ -1022,6 +1007,33 @@ class DeepSeekAgent:
             if json_start != -1 and json_end > json_start:
                 json_str = reflection_result[json_start:json_end]
                 data = json.loads(json_str)
+                
+                # 定义内部辅助函数：语义去重，避免存储重复记忆
+                def save_if_unique(text, mtype, importance=0.7, threshold=0.105):
+                    """
+                    检查记忆是否已存在，只有足够新颖的内容才会保存
+                    
+                    Args:
+                        text: 记忆文本
+                        mtype: 记忆类型
+                        importance: 重要性权重
+                        threshold: 相似度阈值，超过此值视为重复（0.85 = 85%相似）
+                    
+                    Returns:
+                        bool: True 表示已保存，False 表示跳过（重复）
+                    """
+                    if not self.mem:
+                        return False
+                    
+                    # 先搜索一下有没有极其相似的记忆
+                    existing = self.mem.search(text, top_k=1)
+                    if existing and existing[0]['score'] > threshold:
+                        print(f"   ♻️ 记忆已存在，跳过: {text[:30]}... (相似度: {existing[0]['score']:.2f})")
+                        return False
+                    
+                    # 如果足够新颖，则保存
+                    self.mem.add_memory(text=text, mtype=mtype, importance=importance)
+                    return True
                 
                 # 1. 存入结构化事实 (Facts) - 会覆盖旧 Key
                 facts = data.get("facts", [])
@@ -1038,32 +1050,46 @@ class DeepSeekAgent:
                         )
                         print(f"   ✓ {fact_text}")
                 
-                # 2. 存入心理侧写 (Psychology) - 设为 insight
+                # 2. 存入心理侧写 (Psychology) - 设为 insight (语义去重)
                 insights = data.get("psychology", [])
+                saved_insights = 0
                 if insights:
-                    print(f"🧠 [Deep Reflection] 提取到 {len(insights)} 条心理洞察:")
+                    print(f"🧠 [Deep Reflection] 处理 {len(insights)} 条心理洞察:")
                     for insight in insights:
-                        self.mem.add_memory(
-                            text=f"用户心理侧写：{insight}",
-                            mtype="insight",
-                            importance=0.7
-                        )
-                        print(f"   ✓ {insight}")
+                        full_text = f"用户心理侧写：{insight}"
+                        if save_if_unique(full_text, "insight", importance=0.7, threshold=0.85):
+                            print(f"   ✓ {insight}")
+                            saved_insights += 1
+                    if saved_insights > 0:
+                        print(f"   💾 已保存 {saved_insights}/{len(insights)} 条新洞察")
                 
-                # 3. (可选) 存入情景摘要，用于长期回忆
+                # 3. ★新增：Behavior (行为模式) - 语义去重
+                behaviors = data.get("behavior", [])
+                saved_behaviors = 0
+                if behaviors:
+                    print(f"📅 [Deep Reflection] 处理 {len(behaviors)} 条行为习惯:")
+                    for b in behaviors:
+                        full_text = f"用户行为习惯：{b}"
+                        # 行为习惯去重阈值稍低(0.80)，允许记录细微差异
+                        if save_if_unique(full_text, "behavior", importance=0.8, threshold=0.80):
+                            print(f"   ✓ {b}")
+                            saved_behaviors += 1
+                    if saved_behaviors > 0:
+                        print(f"   💾 已保存 {saved_behaviors}/{len(behaviors)} 条新习惯")
+                
+                # 4. (可选) 存入情景摘要，用于长期回忆 (语义去重)
                 summary = data.get("summary", "")
                 if summary:
-                    self.mem.add_memory(
-                        text=f"对话摘要：{summary}",
-                        mtype="episodic_summary",
-                        importance=0.3
-                    )
-                    print(f"📖 [Deep Reflection] 情景摘要: {summary}")
+                    full_text = f"对话摘要：{summary}"
+                    # 摘要去重阈值较高(0.90)，避免存储相似的对话摘要
+                    if save_if_unique(full_text, "episodic_summary", importance=0.3, threshold=0.90):
+                        print(f"📖 [Deep Reflection] 情景摘要: {summary}")
                 
-                if not facts and not insights and not summary:
-                    print("ℹ️ [Deep Reflection] 本次对话无需提取特殊记忆（闲聊内容）")
+                total_saved = len(facts) + saved_insights + saved_behaviors
+                if total_saved == 0:
+                    print("ℹ️ [Deep Reflection] 本次对话无新记忆（闲聊或重复内容）")
                 else:
-                    print("✅ [Deep Reflection] 反思完成，记忆已更新。")
+                    print(f"✅ [Deep Reflection] 反思完成，共保存 {total_saved} 条新记忆")
             else:
                 print(f"❌ [Deep Reflection] 无法从响应中提取JSON")
                 
@@ -1079,12 +1105,24 @@ class DeepSeekAgent:
         """
         程序退出时调用，确保缓冲区里剩余的内容不丢失
         """
-        if self.dialogue_buffer:
+        # 如果缓冲区太短（少于4条消息 = 2轮对话），直接丢弃，不值得反思
+        MIN_BUFFER_SIZE = 4  # 至少需要2轮完整对话
+        
+        if self.dialogue_buffer and len(self.dialogue_buffer) >= MIN_BUFFER_SIZE:
             print("💾 [Agent] 程序退出，正在保存剩余的对话记忆...")
             print(f"   缓冲区剩余 {len(self.dialogue_buffer)//2} 轮对话")
             self._trigger_reflection()
-            # 等待反思线程完成（最多等待3秒）
-            import time
-            time.sleep(3)
+            # 等待反思线程完成（最多等待10秒）
+            if self.reflection_thread and self.reflection_thread.is_alive():
+                print("⏳ [Agent] 等待反思线程完成...")
+                self.reflection_thread.join(timeout=10)
+                if self.reflection_thread.is_alive():
+                    print("⚠️ [Agent] 反思线程超时（10秒），强制退出")
+                else:
+                    print("✅ [Agent] 反思线程已完成")
         else:
-            print("ℹ️ [Agent] 程序退出，缓冲区为空，无需保存")
+            buffer_count = len(self.dialogue_buffer)
+            if buffer_count == 0:
+                print("ℹ️ [Agent] 程序退出，缓冲区为空，无需保存")
+            else:
+                print(f"ℹ️ [Agent] 程序退出，缓冲区内容过少 ({buffer_count} 条消息)，跳过反思")

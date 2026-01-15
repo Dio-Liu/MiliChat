@@ -134,7 +134,7 @@ class VisionSensor:
         智能分析屏幕内容（路由决策）
         
         流程：
-        0. 随机选择 prompt 类型（毒舌/温柔/抽象）
+        0. 随机选择 prompt 类型（毒舌/温柔/抽象）- 根据时间动态调整比例
         1. 如果是抽象模式 → 跳过截图，直接生成抽象内容
         2. 否则 → 截图 → 路由决策 → 选择 TEXT/VISION 流
         
@@ -149,8 +149,55 @@ class VisionSensor:
         if not self.client:
             return None, None
         
-        # Step 0: 随机选择 prompt
-        selected_prompt = random.choice(VISION_SYSTEM_PROMPTS)
+        # Step 0: 根据时间动态调整 prompt 比例
+        from src.core.config import VISION_SYSTEM_PROMPT_TOXIC, VISION_SYSTEM_PROMPT_GENTLE
+        import datetime
+        
+        current_hour = datetime.datetime.now().hour
+        
+        # 白天时段 (6:00-18:00): 毒舌比例更高
+        # 晚上时段 (18:00-6:00): 温柔比例更高
+        if 6 <= current_hour < 18:
+            # 白天：TOXIC:GENTLE:ABSTRACT = 6:2:2
+            prompt_pool = [
+                VISION_SYSTEM_PROMPT_TOXIC,
+                VISION_SYSTEM_PROMPT_TOXIC,
+                VISION_SYSTEM_PROMPT_TOXIC,
+                VISION_SYSTEM_PROMPT_TOXIC,
+                VISION_SYSTEM_PROMPT_TOXIC,
+                VISION_SYSTEM_PROMPT_TOXIC,
+                VISION_SYSTEM_PROMPT_GENTLE,
+                VISION_SYSTEM_PROMPT_GENTLE,
+                VISION_SYSTEM_PROMPT_ABSTRACT,
+                VISION_SYSTEM_PROMPT_ABSTRACT
+            ]
+            time_mode = "白天"
+        else:
+            # 晚上：TOXIC:GENTLE:ABSTRACT = 2:6:2
+            prompt_pool = [
+                VISION_SYSTEM_PROMPT_TOXIC,
+                VISION_SYSTEM_PROMPT_TOXIC,
+                VISION_SYSTEM_PROMPT_TOXIC,
+                VISION_SYSTEM_PROMPT_GENTLE,
+                VISION_SYSTEM_PROMPT_GENTLE,
+                VISION_SYSTEM_PROMPT_GENTLE,
+                VISION_SYSTEM_PROMPT_GENTLE,
+                VISION_SYSTEM_PROMPT_GENTLE,
+                VISION_SYSTEM_PROMPT_ABSTRACT,
+                VISION_SYSTEM_PROMPT_ABSTRACT
+            ]
+            time_mode = "晚上"
+        
+        selected_prompt = random.choice(prompt_pool)
+        
+        # 打印调试信息
+        if selected_prompt == VISION_SYSTEM_PROMPT_TOXIC:
+            prompt_type = "毒舌"
+        elif selected_prompt == VISION_SYSTEM_PROMPT_GENTLE:
+            prompt_type = "温柔"
+        else:
+            prompt_type = "抽象"
+        print(f"🎭 [Vision] {time_mode}模式 - 选择 Prompt: {prompt_type}")
         
         # ★★★ 判断是否为抽象模式 ★★★
         if selected_prompt == VISION_SYSTEM_PROMPT_ABSTRACT:
