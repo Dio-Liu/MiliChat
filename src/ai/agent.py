@@ -22,7 +22,8 @@ from src.core.config import (
     REFLECTION_THRESHOLD,
     REFLECTION_TEMPERATURE,
     REFLECTION_MAX_TOKENS,
-    REFLECTION_SYSTEM_PROMPT
+    REFLECTION_SYSTEM_PROMPT,
+    REFLECTION_DEDUP_THRESHOLD
 )
 
 # 导入 LLM 驱动
@@ -1009,7 +1010,7 @@ class DeepSeekAgent:
                 data = json.loads(json_str)
                 
                 # 定义内部辅助函数：语义去重，避免存储重复记忆
-                def save_if_unique(text, mtype, importance=0.7, threshold=0.105):
+                def save_if_unique(text, mtype, importance=0.7, threshold=REFLECTION_DEDUP_THRESHOLD):
                     """
                     检查记忆是否已存在，只有足够新颖的内容才会保存
                     
@@ -1017,7 +1018,7 @@ class DeepSeekAgent:
                         text: 记忆文本
                         mtype: 记忆类型
                         importance: 重要性权重
-                        threshold: 相似度阈值，超过此值视为重复（0.85 = 85%相似）
+                        threshold: 相似度阈值（百分比，0-100），超过此值视为重复
                     
                     Returns:
                         bool: True 表示已保存，False 表示跳过（重复）
@@ -1057,7 +1058,7 @@ class DeepSeekAgent:
                     print(f"🧠 [Deep Reflection] 处理 {len(insights)} 条心理洞察:")
                     for insight in insights:
                         full_text = f"用户心理侧写：{insight}"
-                        if save_if_unique(full_text, "insight", importance=0.7, threshold=0.85):
+                        if save_if_unique(full_text, "insight", importance=0.7):
                             print(f"   ✓ {insight}")
                             saved_insights += 1
                     if saved_insights > 0:
@@ -1070,8 +1071,7 @@ class DeepSeekAgent:
                     print(f"📅 [Deep Reflection] 处理 {len(behaviors)} 条行为习惯:")
                     for b in behaviors:
                         full_text = f"用户行为习惯：{b}"
-                        # 行为习惯去重阈值稍低(0.80)，允许记录细微差异
-                        if save_if_unique(full_text, "behavior", importance=0.8, threshold=0.80):
+                        if save_if_unique(full_text, "behavior", importance=0.8):
                             print(f"   ✓ {b}")
                             saved_behaviors += 1
                     if saved_behaviors > 0:
@@ -1081,8 +1081,7 @@ class DeepSeekAgent:
                 summary = data.get("summary", "")
                 if summary:
                     full_text = f"对话摘要：{summary}"
-                    # 摘要去重阈值较高(0.90)，避免存储相似的对话摘要
-                    if save_if_unique(full_text, "episodic_summary", importance=0.3, threshold=0.90):
+                    if save_if_unique(full_text, "episodic_summary", importance=0.3):
                         print(f"📖 [Deep Reflection] 情景摘要: {summary}")
                 
                 total_saved = len(facts) + saved_insights + saved_behaviors

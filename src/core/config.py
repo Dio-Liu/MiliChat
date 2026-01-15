@@ -483,6 +483,10 @@ REFLECTION_THRESHOLD = 10
 REFLECTION_TEMPERATURE = 0.3  # 降低温度以获得更稳定的输出
 REFLECTION_MAX_TOKENS = 1000   # 单次反思的最大输出长度
 
+# 反思去重相似度阈值（百分比单位，0-100）
+# 当新记忆与现有记忆的相似度超过此值时，视为重复并跳过
+REFLECTION_DEDUP_THRESHOLD = 10
+
 # 反思分析的系统提示
 REFLECTION_SYSTEM_PROMPT = """你是一个专业的 AI 伴侣潜意识分析模块。请分析以下对话历史（包含时间戳），提炼用户的【核心画像】。
 

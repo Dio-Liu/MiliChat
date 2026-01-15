@@ -632,16 +632,16 @@ class ChatWindow(QWidget):
             if VISION_USE_VOICE:
                 if current_sentence_buffer.strip():
                     self.audio_system.add_sentence(current_sentence_buffer.strip(), pending_motion)
-            else:
-                # 气泡模式：播完整文本
-                clean_full_text = full_text.strip()
-                if clean_full_text:
-                    # 通过信号发送气泡消息
-                    signal_bus.show_bubble_message.emit(clean_full_text)
-                    
-                    # 如果有动作，触发动作
-                    if pending_motion:
-                        signal_bus.agent_motion_triggered.emit(pending_motion)
+            
+            # 气泡模式：无论是否语音播报，都显示气泡对话框
+            clean_full_text = full_text.strip()
+            if clean_full_text:
+                # 通过信号发送气泡消息
+                signal_bus.show_bubble_message.emit(clean_full_text)
+                
+                # 如果有动作，触发动作（仅在非语音模式下触发，避免重复）
+                if pending_motion and not VISION_USE_VOICE:
+                    signal_bus.agent_motion_triggered.emit(pending_motion)
         
         except Exception as e:
             print(f"❌ [UI] 视觉回复处理错误: {e}")
