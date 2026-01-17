@@ -47,7 +47,7 @@ import src.ai.tools.os_control
 class AgentReply:
     """Agent 回复数据结构"""
     reply: str
-    emotion: str = "smile"
+    emotion: Any = "smile"
     motion: str = "idle"
     voice: Dict[str, Any] = None
     memory_write: list = None
@@ -109,6 +109,18 @@ class DeepSeekAgent:
         self.reflection_threshold = REFLECTION_THRESHOLD  # 从 config 读取
         self.reflection_thread = None  # 追踪反思线程，用于 close() 时等待
         print(f"🧠 [Agent] 记忆反思机制已启用 (阈值: {self.reflection_threshold} 轮对话)")
+
+    def _normalize_expression_meta(self, meta_data: Dict[str, Any]) -> Dict[str, Any]:
+        """将 expression 字典序列化为 JSON 字符串，兼容信号类型"""
+        if not isinstance(meta_data, dict):
+            return meta_data
+        expression = meta_data.get("expression")
+        if isinstance(expression, dict):
+            try:
+                meta_data["expression"] = json.dumps(expression, ensure_ascii=False)
+            except Exception:
+                meta_data["expression"] = json.dumps(expression)
+        return meta_data
 
     
     def generate_text_tucao(self, ocr_text: str) -> str:
@@ -493,6 +505,7 @@ class DeepSeekAgent:
                         print(f"   修复后: {json_str}")
                     
                     meta_data = json.loads(json_str)
+                    meta_data = self._normalize_expression_meta(meta_data)
                     
                     # 检查 trigger 标记
                     if meta_data.get("should_trigger") is False:
@@ -723,6 +736,7 @@ class DeepSeekAgent:
                                 import json
                                 json_str = header.replace("###JSON###", "")
                                 meta_data = json.loads(json_str)
+                                meta_data = self._normalize_expression_meta(meta_data)
                                 yield {"type": "meta", "data": meta_data}
                                 
                                 # 处理记忆保存
@@ -786,6 +800,7 @@ class DeepSeekAgent:
                             import json
                             json_str = header.replace("###JSON###", "")
                             meta_data = json.loads(json_str)
+                            meta_data = self._normalize_expression_meta(meta_data)
                             yield {"type": "meta", "data": meta_data}
                             
                             # 处理记忆保存
@@ -855,6 +870,7 @@ class DeepSeekAgent:
                             import json
                             json_str = header.replace("###JSON###", "")
                             meta_data = json.loads(json_str)
+                            meta_data = self._normalize_expression_meta(meta_data)
                             yield {"type": "meta", "data": meta_data, "raw_char": header + "\n"}
                             
                             # 处理记忆保存

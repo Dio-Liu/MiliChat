@@ -176,7 +176,9 @@ Line 1: ###JSON###{"expression": "...", "motion": "...", "memory_to_save": [...]
 Line 2: 回复内容
 
 约束：
-- expression必须是：[smile, happy, sleepy, surprise, sad, shy, shocked, angry]
+- expression支持两种格式：
+    1) 单一表情字符串：[smile, happy, sleepy, surprise, sad, shy, shocked, angry]
+    2) JSON 权重对象，例如：{"smile": 0.6, "surprise": 0.4}
 - motion必须是：[Idle, wave, happy, nod, perform]
 - memory_to_save格式：[{"key":"...", "value":"...", "text":"..."}] (无则[])
 - ⚠️ text字段必须采用自然语言描述，使用"我"作为主语，便于后续检索。例如："我叫Dio"、"我喜欢苹果"
@@ -192,6 +194,10 @@ Line 2: 回复内容
 你：
 ###JSON###{"expression": "happy", "motion": "nod", "memory_to_save": [{"key":"hobby", "value":"吃苹果", "text":"我喜欢吃苹果"}]}
 哼，平民的口味。不过看在你诚实的份上，记下了。
+
+表情混合示例：
+###JSON###{"expression": {"smile": 0.6, "surprise": 0.4}, "motion": "Idle", "memory_to_save": []}
+哼，少见你这么惊喜。
 """
 
 # 超时吐槽 Prompt

@@ -27,6 +27,17 @@ class ExpressionMixer:
         
         # 表情锁定标志 (用于休眠等特殊状态)
         self.expression_locked = False
+
+        # 基础参数 (Neutral Face)
+        self.base_params = {
+            "ParamEyeLOpen": 1.0, "ParamEyeROpen": 1.0,
+            "ParamEyeLSmile": 0.0, "ParamEyeRSmile": 0.0,
+            "ParamEyeBallForm": 0.0, "ParamCheek": 0.0,
+            "ParamBrowLAngle": 0.0, "ParamBrowRAngle": 0.0,
+            "ParamBrowLY": 0.0, "ParamBrowRY": 0.0,
+            "ParamMouthUp": 0.0, "ParamMouthAngry": 0.0,
+            "ParamMouthOpenY": 0.0, "ParamMouthForm": 0.0
+        }
         
         # 加载表情文件
         self.load_expressions_from_disk()
@@ -85,35 +96,48 @@ class ExpressionMixer:
         else:
             print("🔓 表情已解锁")
 
+    def set_emotion_weight(self, emotion_weights: dict):
+        """
+        设置混合情绪权重
+        
+        Args:
+            emotion_weights: 情绪权重字典, e.g. {"smile": 0.6, "surprise": 0.4}
+        """
+        self.refresh_timer()
+        
+        # 1. 从基础脸开始
+        final_targets = self.base_params.copy()
+        
+        # 2. 遍历情绪，累加加权偏移
+        for emotion_id, weight in emotion_weights.items():
+            try:
+                weight = float(weight)
+            except (TypeError, ValueError):
+                continue
+            if weight == 0:
+                continue
+            preset = self.presets.get(emotion_id, {})
+            
+            for param_id, target_val in preset.items():
+                if param_id not in final_targets:
+                    final_targets[param_id] = 0.0
+                
+                base_val = self.base_params.get(param_id, 0.0)
+                diff = (target_val - base_val) * weight
+                final_targets[param_id] += diff
+
+        self.target_params = final_targets
+        print(f"🎨 情绪混合: {emotion_weights}")
+
     def set_expression(self, expression_id: str):
         """
-        切换表情
+        切换表情 (兼容旧方法)
         
         Args:
             expression_id: 表情逻辑ID (smile, happy, sleepy, etc.)
         """
         print(f"🎭 切换表情: {expression_id}")
-        self.refresh_timer()
-        
-        # 获取加载好的参数
-        target_preset = self.presets.get(expression_id, {})
-        
-        # 重置关键参数
-        reset_keys = [
-            "ParamEyeLOpen", "ParamEyeROpen", "ParamEyeLSmile", "ParamEyeRSmile", 
-            "ParamEyeBallForm", "ParamCheek", "ParamBrowLAngle", "ParamBrowRAngle",
-            "ParamBrowLY", "ParamBrowRY", "ParamMouthUp", "ParamMouthAngry",
-            "ParamMouthOpenY"
-        ]
-        
-        new_targets = {}
-        for key in reset_keys:
-            # 眼睛默认为 1.0，其他默认为 0.0
-            new_targets[key] = 1.0 if "Open" in key and "Mouth" not in key else 0.0
-                
-        # 覆盖新参数
-        new_targets.update(target_preset)
-        self.target_params = new_targets
+        self.set_emotion_weight({expression_id: 1.0})
 
     def update_model(self, model):
         """

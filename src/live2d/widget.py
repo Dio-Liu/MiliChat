@@ -131,6 +131,24 @@ class Live2DWidget(QOpenGLWidget):
         Args:
             expression_id: 表情ID (smile, happy, sleepy, etc.)
         """
+        import json
+        
+        if isinstance(expression_id, dict):
+            self.expression_mixer.set_emotion_weight(expression_id)
+            return
+        
+        # 尝试解析 JSON (混合情绪)
+        if isinstance(expression_id, str) and expression_id.strip().startswith("{"):
+            try:
+                weights = json.loads(expression_id)
+                if isinstance(weights, dict):
+                    self.expression_mixer.set_emotion_weight(weights)
+                    return
+            except json.JSONDecodeError:
+                print(f"⚠️ 表情 JSON 解析失败: {expression_id}")
+            except Exception as e:
+                print(f"⚠️ 设置混合表情出错: {e}")
+        
         self.expression_mixer.set_expression(expression_id)
     
     def _handle_motion_trigger(self, motion_name: str):
