@@ -68,9 +68,20 @@ class ComicBubble(QWidget):
         - moveEvent 确保移动到正确位置后，立即重新绘制，箭头方向得到更新
         """
         super().moveEvent(event)
-        # 强制刷新显示，触发 paintEvent 重新绘制
-        self.update()
+        # 优化：只在可见且未进行批量更新时才重绘，避免拖拽时过度刷新
+        if self.isVisible() and not self.updatesEnabled():
+            return
+        # 使用延迟更新，避免频繁移动时的性能问题
+        if not hasattr(self, '_update_scheduled') or not self._update_scheduled:
+            self._update_scheduled = True
+            QTimer.singleShot(16, self._deferred_update)  # ~60fps
 
+    def _deferred_update(self):
+        """延迟更新，减少频繁重绘"""
+        self._update_scheduled = False
+        if self.isVisible():
+            self.update()
+    
     def update_layout_margins(self):
         """根据尖角方向调整文字的边距，避免文字压到尖角"""
         # (左, 上, 右, 下)
@@ -140,12 +151,20 @@ class ComicBubble(QWidget):
 
         w = self.width()
         h = self.height()
+        
+        # 防止无效尺寸导致绘制错误
+        if w <= 0 or h <= 0:
+            return
+        
         triangle_h = 15  # 尖角高度
         triangle_w = 15  # 尖角宽度
         offset = 5       # 边框偏移量
 
         # 定义气泡主体区域 (减去下方尖角的高度)
-        bubble_rect = QRectF(offset, offset, w - 2*offset, h - triangle_h - 2*offset)
+        # 确保尺寸有效，避免负数
+        bubble_w = max(1, w - 2*offset)
+        bubble_h = max(1, h - triangle_h - 2*offset)
+        bubble_rect = QRectF(offset, offset, bubble_w, bubble_h)
 
         path = QPainterPath()
         path.addRoundedRect(bubble_rect, 10, 10)

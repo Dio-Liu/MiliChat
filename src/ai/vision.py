@@ -265,7 +265,7 @@ class VisionSensor:
                 messages=messages,
                 temperature=1.2,  # 高温度，让输出更随机
                 top_p=0.95,
-                max_tokens=500   # ★ 增加到 500，确保完整的 JSON 和 1-2 句话能完整返回
+                max_tokens=1000   # ★ 增加到 1000，确保完整的 JSON 和多句话能完整返回
             )
             
             raw_content = response.choices[0].message.content.strip()
@@ -274,7 +274,24 @@ class VisionSensor:
             # ★ 检查是否被截断
             if finish_reason == "length":
                 print(f"⚠️ [Vision] 抽象内容被截断！finish_reason=length")
+                print(f"   截断内容长度: {len(raw_content)} 字符")
                 print(f"   截断内容: {raw_content}")
+                # 如果被截断，尝试补全JSON
+                if raw_content.startswith("###JSON###") and not raw_content.rstrip().endswith("}"):
+                    print(f"⚠️ [Vision] JSON 被截断，尝试补全...")
+                    lines = raw_content.split("\n", 1)
+                    json_part = lines[0].replace("###JSON###", "").strip()
+                    # 补全JSON
+                    json_part = json_part.rstrip('"').rstrip(',')
+                    if json_part.count('"') % 2 == 1:
+                        json_part += '"'
+                    if '"motion"' not in json_part:
+                        json_part += ',"motion":"perform"'
+                    if '"should_trigger"' not in json_part:
+                        json_part += ',"should_trigger":true'
+                    if not json_part.endswith("}"):
+                        json_part += "}"
+                    raw_content = f"###JSON###{json_part}\n" + (lines[1] if len(lines) > 1 else "")
             
             # 清洗可能的 markdown 代码块
             if raw_content.startswith("```"):

@@ -493,15 +493,30 @@ class DeepSeekAgent:
                     # 检查 JSON 是否完整
                     if not json_str.endswith("}"):
                         print(f"⚠️ [Agent] JSON 不完整，尝试修复...")
+                        print(f"   修复前: {json_str}")
+                        
                         # 如果响应被截断，尝试简单补全
-                        # 检查是否有未闭合的引号
+                        # 1. 清理可能存在的半完整内容
+                        json_str = json_str.rstrip('"')  # 移除尾部的引号
+                        
+                        # 2. 检查是否有未闭合的引号
                         quote_count = json_str.count('"') - json_str.count('\\"')
+                        
+                        # 3. 补全缺失的字段和闭合括号
                         if quote_count % 2 == 1:
-                            # 有未闭合的引号，添加闭合引号和右括号
-                            json_str += '", "motion": "Idle", "should_trigger": true}'
-                        else:
-                            # 没有未闭合引号，直接补全
-                            json_str += ', "motion": "Idle", "should_trigger": true}'
+                            # 有未闭合的引号，先闭合它
+                            json_str += '"'
+                        
+                        # 4. 移除末尾可能的逗号，然后添加缺失字段
+                        json_str = json_str.rstrip(',').rstrip()
+                        if not json_str.endswith('}'):
+                            # 确保有正确的字段格式
+                            if '"motion"' not in json_str:
+                                json_str += ',"motion":"perform"'
+                            if '"should_trigger"' not in json_str:
+                                json_str += ',"should_trigger":true'
+                            json_str += '}'
+                        
                         print(f"   修复后: {json_str}")
                     
                     meta_data = json.loads(json_str)

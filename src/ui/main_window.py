@@ -1,5 +1,5 @@
 """主窗口 - 桌面宠物容器"""
-from PySide6.QtCore import Qt, QPoint
+from PySide6.QtCore import Qt, QPoint, QTimer
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
@@ -65,6 +65,9 @@ class DesktopPetWindow(QWidget):
         
         # 当前缩放比例
         self.current_scale = 1.0
+        
+        # 气泡位置更新节流（避免拖拽时过度刷新）
+        self._bubble_update_scheduled = False
     
     def create_control_bar(self) -> QFrame:
         """创建悬浮控制栏"""
@@ -310,10 +313,22 @@ class DesktopPetWindow(QWidget):
             if self.chat_win.isVisible():
                 self.update_chat_position()
             
-            # 如果气泡显示着，让它跟着移动
-            self.update_bubble_position()
+            # 如果气泡显示着，让它跟着移动（使用节流，避免过度刷新）
+            self._schedule_bubble_update()
                 
             event.accept()
+    
+    def _schedule_bubble_update(self):
+        """节流更新气泡位置，避免频繁调用"""
+        if not self._bubble_update_scheduled:
+            self._bubble_update_scheduled = True
+            QTimer.singleShot(16, self._do_bubble_update)  # ~60fps
+    
+    def _do_bubble_update(self):
+        """执行气泡位置更新"""
+        self._bubble_update_scheduled = False
+        if self.bubble.isVisible():
+            self.update_bubble_position()
     
     def mouseReleaseEvent(self, event: QMouseEvent):
         """鼠标释放事件"""

@@ -1,4 +1,5 @@
 """聊天窗口 - UI 交互组件"""
+import threading
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
@@ -368,41 +369,56 @@ class ChatWindow(QWidget):
     # ==========================================
     def trigger_vision_analysis(self):
         """主动触发视觉分析（用户说"看下屏幕"等关键词时）"""
-        try:
-            # 获取当前历史和记忆
-            current_history = list(self.agent.history)
-            long_term_memory = self.agent.get_formatted_memory()
-            
-            # 直接调用 vision sensor 分析（复用原有代码）
-            raw_response, model_used = self.vision_thread.sensor.analyze(
-                history=current_history,
-                long_term_memory=long_term_memory
-            )
-            
-            # 重置视觉检测计时器（关键！避免60秒后重复触发）
-            import time
-            self.vision_thread.last_scan_time = time.time()
-            self.vision_thread.last_chat_time = time.time()
-            print("⏰ [Chat] 已重置视觉检测计时器")
-            
-            if raw_response:
-                # 检查是否触发
-                if '"should_trigger": false' in raw_response or '"should_trigger":false' in raw_response:
-                    print(f"👁️ [Chat] {model_used} 分析完成，但当前内容不值得评论")
-                    self.chat_log.appendPlainText("\n✨ Mili:\n嗯...没什么好说的。")
-                else:
-                    print(f"👁️ [Chat] {model_used} 分析完成，触发回复")
-                    # 直接 emit 信号显示（复用原有的视觉回复处理）
-                    self.vision_thread.vision_reaction.emit(raw_response)
-            else:
-                print("❌ [Chat] 视觉分析失败")
-                self.chat_log.appendPlainText("\n✨ Mili:\n哎呀，我看不到屏幕...")
+        print(f"👁️ [Chat] 检测到视觉触发关键词，启动后台分析线程...")
+        self.chat_log.appendPlainText("\n(Mili 正在盯着你的屏幕...)")
+        self.chat_log.moveCursor(QTextCursor.End)
         
-        except Exception as e:
-            print(f"❌ [Chat] 视觉触发失败: {e}")
-            import traceback
-            traceback.print_exc()
-            self.chat_log.appendPlainText("\n✨ Mili:\n出错了...看不了。")
+        # 定义后台任务函数
+        def _run_analysis_task():
+            try:
+                # 1. 获取数据副本（在子线程内获取以避免跨线程竞争）
+                current_history = list(self.agent.history)
+                long_term_memory = self.agent.get_formatted_memory()
+                
+                # 2. 执行耗时的分析（现在在子线程运行，不会卡顿UI）
+                raw_response, model_used = self.vision_thread.sensor.analyze(
+                    history=current_history,
+                    long_term_memory=long_term_memory
+                )
+                
+                # 重置视觉检测计时器（避免60秒后重复触发）
+                import time
+                self.vision_thread.last_scan_time = time.time()
+                self.vision_thread.last_chat_time = time.time()
+                print("⏰ [Chat] 已重置视觉检测计时器")
+                
+                # 3. 处理结果
+                if raw_response:
+                    # 检查是否触发
+                    if '"should_trigger": false' in raw_response or '"should_trigger":false' in raw_response:
+                        print(f"👁️ [Chat] {model_used} 分析完成，但认为无需回复")
+                        # 通过信号将结果发回主线程
+                        self.vision_thread.vision_reaction.emit('###JSON###{"expression": "smile", "motion": "Idle"}\n嗯...没什么特别的。')
+                    else:
+                        print(f"👁️ [Chat] {model_used} 分析完成，触发回复")
+                        # ✅ 通过信号将结果发回主线程进行UI渲染和语音播放
+                        self.vision_thread.vision_reaction.emit(raw_response)
+                else:
+                    print("❌ [Chat] 视觉分析返回为空")
+                    # 发送模拟的错误回复信号
+                    error_json = '###JSON###{"expression": "sad", "motion": "Idle"}\n哎呀，刚才眼睛花了一下...'
+                    self.vision_thread.vision_reaction.emit(error_json)
+                    
+            except Exception as e:
+                print(f"❌ [Chat] 后台视觉分析出错: {e}")
+                import traceback
+                traceback.print_exc()
+                # 发送错误信号到主线程
+                error_json = '###JSON###{"expression": "sad", "motion": "Idle"}\n出错了...看不了。'
+                self.vision_thread.vision_reaction.emit(error_json)
+        
+        # 启动临时线程执行分析任务
+        threading.Thread(target=_run_analysis_task, daemon=True).start()
     
     # ==========================================
     # ★★★ 新增：清空聊天记录 ★★★
@@ -607,16 +623,16 @@ class ChatWindow(QWidget):
             if VISION_USE_VOICE:
                 if current_sentence_buffer.strip():
                     self.audio_system.add_sentence(current_sentence_buffer.strip(), pending_motion)
-            else:
-                # 气泡模式：播完整文本
-                clean_full_text = full_text.strip()
-                if clean_full_text:
-                    # 通过信号发送气泡消息
-                    signal_bus.show_bubble_message.emit(clean_full_text)
-                    
-                    # 如果有动作，触发动作
-                    if pending_motion:
-                        signal_bus.agent_motion_triggered.emit(pending_motion)
+
+            # 语音/气泡双模式：始终显示文本气泡
+            clean_full_text = full_text.strip()
+            if clean_full_text:
+                # 通过信号发送气泡消息
+                signal_bus.show_bubble_message.emit(clean_full_text)
+                
+                # 非语音模式下，才在气泡显示时触发动作
+                if (not VISION_USE_VOICE) and pending_motion:
+                    signal_bus.agent_motion_triggered.emit(pending_motion)
         
         except Exception as e:
             print(f"❌ [UI] 视觉回复处理错误: {e}")
