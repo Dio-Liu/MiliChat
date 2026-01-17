@@ -136,8 +136,19 @@ class ComicBubble(QWidget):
         Args:
             duration: 显示时长(毫秒)，默认5秒
         """
+        # 1. 确保透明度为 1
         self.setWindowOpacity(1.0)
+        
+        # 2. 显示窗口
         self.show()
+        
+        # ★★★ 关键修复：强制重绘 ★★★
+        # UpdateLayeredWindowIndirect 失败通常是因为窗口大小改变后，OS 的 Surface 没同步。
+        # 调用 repaint() 会强制 Qt 立即重新执行 paintEvent 并再次尝试提交到 OS，
+        # 往往第二次提交就能成功覆盖掉旧的画面。
+        self.repaint()
+        
+        # 3. 启动隐藏定时器
         self.hide_timer.start(duration)
 
     def fade_out(self):
